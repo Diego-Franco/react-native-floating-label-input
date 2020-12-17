@@ -10,6 +10,7 @@ import {
   TextInput,
   Platform,
   NativeSyntheticEvent,
+  LayoutChangeEvent,
   TextInputFocusEventData,
   Text,
   Image,
@@ -66,6 +67,9 @@ const getLabelPositions = (style: TextStyle, labelStyle: TextStyle) => {
   return [unfocused, focused]
 }
 
+const FONT_SIZE_BLURRED = 14;
+const FONT_SIZE_FOCUSED = 10;
+
 const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
   { label,
     mask,
@@ -121,8 +125,8 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
   // const inputRef = useRef<any>(null);
 
   customLabelStyles = {
-    fontSizeFocused: 10,
-    fontSizeBlurred: 14,
+    fontSizeFocused: FONT_SIZE_FOCUSED,
+    fontSizeBlurred: FONT_SIZE_BLURRED,
     colorFocused: '#49658c',
     colorBlurred: '#49658c',
     ...setGlobalStyles?.customLabelStyles,
@@ -377,6 +381,18 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
     } else {
       return onChangeText ? onChangeText(val) : false;
     }
+  }
+
+  function onLayout(event: LayoutChangeEvent) {
+    var {height} = event.nativeEvent.layout;
+    let fontSize;
+    if(staticLabel) {
+      fontSize = customLabelStyles.fontSizeFocused ? customLabelStyles.fontSizeFocused : FONT_SIZE_FOCUSED;
+    } else {
+      fontSize = customLabelStyles.fontSizeBlurred ? customLabelStyles.fontSizeBlurred : FONT_SIZE_BLURRED;
+    }
+    
+    setHalfTop((height + fontSize / 2));
   }
 
   return (
