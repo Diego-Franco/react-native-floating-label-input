@@ -10,7 +10,6 @@ import {
   TextInput,
   Platform,
   NativeSyntheticEvent,
-  LayoutChangeEvent,
   TextInputFocusEventData,
   Text,
   Image,
@@ -19,6 +18,8 @@ import {
   TextStyle,
   ViewStyle,
   ImageStyle,
+  TouchableWithoutFeedback,
+  LayoutChangeEvent,
 } from 'react-native';
 import Animated, { Clock, useCode, interpolate, Easing, Value, set }from 'react-native-reanimated';
 import debounce from 'lodash/debounce';
@@ -91,12 +92,13 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
     onBlur,
     onFocus,
     onTogglePassword,
+    leftComponent,
     customHidePasswordImage,
-    customLabelStyles={},
-    staticLabel=false, 
-    hint, 
-    hintTextColor, 
-    placeholder, 
+    customLabelStyles = {},
+    staticLabel = false,
+    hint,
+    hintTextColor,
+    placeholder,
     placeholderTextColor,
     onSubmit,
     containerStyles,
@@ -110,6 +112,7 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
     ...rest},
     ref,
 ) => {
+  
   const [focusedLabel, _onFocusLabel] = useState(!!value);
   const [focused, _onFocusTextInput] = useState(!!value);
   const [secureText, setSecureText] = useState(true);
@@ -208,7 +211,9 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
   }
 
   function _toggleVisibility() {
-    if(onTogglePassword){onTogglePassword(!secureText);}
+    if  (onTogglePassword) {
+      onTogglePassword(!secureText);
+    }
     if (secureText) {
       setSecureText(false);
     } else {
@@ -224,43 +229,66 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
 
   let imgSource = darkTheme
     ? secureText
-      ? customShowPasswordImage ? customShowPasswordImage : makeInvisibleBlack
-      : customHidePasswordImage ?  customHidePasswordImage : makeVisibleBlack
+      ? customShowPasswordImage
+        ? customShowPasswordImage
+        : makeInvisibleBlack
+      : customHidePasswordImage
+      ? customHidePasswordImage
+      : makeVisibleBlack
     : secureText
-    ? customShowPasswordImage ? customShowPasswordImage : makeInvisibleWhite
-    : customHidePasswordImage ? customHidePasswordImage : makeVisibleWhite;
+    ? customShowPasswordImage
+      ? customShowPasswordImage
+      : makeInvisibleWhite
+    : customHidePasswordImage
+    ? customHidePasswordImage
+    : makeVisibleWhite;
 
   
   
   input = {
-    flex:1,
     ...input,
     color: input.color !== undefined ? input.color : customLabelStyles.colorFocused,
     zIndex: floatingLabelStyle?.zIndex !== undefined ? floatingLabelStyle.zIndex - 2 : 0,
   };
 
-  containerStyles = containerStyles !== undefined ? containerStyles : setGlobalStyles?.containerStyles !== undefined ? setGlobalStyles?.containerStyles : styles.container;
+  containerStyles =
+    containerStyles !== undefined
+      ? containerStyles
+      : setGlobalStyles?.containerStyles !== undefined
+      ? setGlobalStyles?.containerStyles
+      : styles.container;
 
   containerStyles = {
     ...containerStyles,
+    alignItems: 'center',
     flexDirection: 'row',
     zIndex: floatingLabelStyle?.zIndex !== undefined ? floatingLabelStyle.zIndex - 6: 0
   }
 
-  let toggleButton = showPasswordContainerStyles !== undefined ? showPasswordContainerStyles : setGlobalStyles?.showPasswordContainerStyles !== undefined ? setGlobalStyles.showPasswordContainerStyles : styles.toggleButton;
-  
+  let toggleButton =
+  showPasswordContainerStyles !== undefined
+    ? showPasswordContainerStyles
+    : setGlobalStyles?.showPasswordContainerStyles !== undefined
+    ? setGlobalStyles.showPasswordContainerStyles
+    : styles.toggleButton;
+
   toggleButton = {
     ...toggleButton,
     alignSelf: 'center',
-  }
+  };
 
-  let img = showPasswordImageStyles !== undefined ? showPasswordImageStyles : setGlobalStyles?.showPasswordImageStyles !== undefined ? setGlobalStyles.showPasswordImageStyles : styles.img;
+  let img =
+    showPasswordImageStyles !== undefined
+      ? showPasswordImageStyles
+      : setGlobalStyles?.showPasswordImageStyles !== undefined
+      ? setGlobalStyles.showPasswordImageStyles
+      : styles.img;
 
   img = {
     height: 25,
-    width:25, 
+    width: 25,
     ...img,
-  }
+  };
 
   const countdown = {
     ...styles.countdown,
@@ -396,74 +424,60 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
   }
 
   return (
-    <View style={containerStyles} 
-    onLayout={(event) => {
-      var {height} = event.nativeEvent.layout
-      setHalfTop((height + (!staticLabel ? floatingLabelStyle?.fontSize !== undefined ? floatingLabelStyle.fontSize : 0 : 0))/2)
-    }}>
-      <Animated.Text
-        onPress={setFocus}
-        style={[
-          floatingLabelStyle,
-          focusStyle,
-        ]}
-      >
-        {label}
-      </Animated.Text>
-      {/* {staticLabel && <Text
-        // onPress={setFocus}
-        style={[
-          style,
-          {
-            zIndex: style?.zIndex !== undefined ? style.zIndex - 4 : 0,
-            top: -10,
-            backgroundColor: '#fff',
-            // width: 44,
-            // height:30
-          },
-        ]}
-      >{label}</Text>} */}
-      <TextInput
-      value={value}
-        onSubmitEditing={onSubmitEditing}
-        secureTextEntry={
-          isPassword !== undefined
-            ? isPassword && secureText
-            : false
-        }
-        onFocus={onFocus !== undefined ? onFocus : handleFocus}
-        onBlur={onBlur !== undefined ? onBlur: handleBlur}
-        ref={inputRef}
-        {...rest}
-        maxLength={
-          mask !== undefined
-            ? mask.length
-            : maxLength !== undefined
-            ? maxLength
-            : undefined
-        }
-        placeholderTextColor={hintTextColor}
-        placeholder={staticLabel && hint ? hint : ''}
-        multiline={multiline}
-        onChangeText={onChangeTextHandler}
-        style={input}
-      />
-      {isPassword && (
-        <TouchableOpacity style={toggleButton} onPress={_toggleVisibility}>
-          {(secureText && customShowPasswordComponent !== undefined) ? customShowPasswordComponent : (!secureText && customHidePasswordComponent!== undefined) ? customHidePasswordComponent : <Image
-            source={imgSource}
-            resizeMode="contain"
-            style={img}
-          />}
-        </TouchableOpacity>
-      )}
-      {showCountdown && maxLength && (
-        <Text style={countdown}>
-          {maxLength - (value ? value.length : 0)}{' '}
-          {countdownLabel}
-        </Text>
-      )}
-    </View>
+    <TouchableWithoutFeedback onPress={setFocus} onLayout={onLayout}>
+      <View style={containerStyles}>
+        {leftComponent && leftComponent}
+        <View style={{flex: 1, flexDirection: 'row'}}>
+          <Animated.Text
+            onPress={setFocus}
+            style={[
+              floatingLabelStyle,
+              focusStyle,
+            ]}>
+            {label}
+          </Animated.Text>
+          <TextInput
+            value={value}
+            onSubmitEditing={onSubmitEditing}
+            secureTextEntry={
+              isPassword !== undefined ? isPassword && secureText : false
+            }
+            onFocus={onFocus !== undefined ? onFocus : handleFocus}
+            onBlur={onBlur !== undefined ? onBlur  : handleBlur}
+            ref={inputRef}
+            {...rest}
+            maxLength={
+              mask !== undefined
+                ? mask.length
+                : maxLength !== undefined
+                ? maxLength
+                : undefined
+            }
+            placeholderTextColor={hintTextColor}
+            placeholder={(staticLabel || focused) && hint ? hint : ''}
+            multiline={multiline}
+            onChangeText={onChangeTextHandler}
+            style={input}
+          />
+          {isPassword && (
+            <TouchableOpacity style={toggleButton} onPress={_toggleVisibility}>
+              {secureText && customShowPasswordComponent !== undefined ? (
+                customShowPasswordComponent
+              ) : !secureText && customHidePasswordComponent !== undefined ? (
+                customHidePasswordComponent
+              ) : (
+                <Image source={imgSource} resizeMode="contain" style={img} />
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+        {showCountdown && maxLength && (
+          <Text style={countdown}>
+            {maxLength - (value ? value.length : 0)} {countdownLabel}
+          </Text>
+        )}
+      </View>
+    </TouchableWithoutFeedback>
   );
 };
 export { setGlobalStyles };
