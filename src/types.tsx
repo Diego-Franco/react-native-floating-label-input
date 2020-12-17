@@ -62,6 +62,8 @@ export interface Props extends TextInputProps {
     customHidePasswordComponent?: JSX.Element;
     /** Callback for show/hide password */
     onTogglePassword?: (show:boolean)=>void;
+      /** Add left component to your input. Usually used for displaying icon */
+    leftComponent?: JSX.Element;
   }
 
   export interface SetGlobalStyles {
