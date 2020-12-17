@@ -73,5 +73,10 @@
       "json",
       "node"
     ]
+  },
+  "dependencies": {
+    "@types/lodash": "^4.14.165",
+    "lodash": "^4.17.20",
+    "react-native-reanimated": "^1.13.2"
   }
 }

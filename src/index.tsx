@@ -7,147 +7,118 @@ import React, {
 } from 'react';
 import {
   View,
-  Animated,
-  Easing,
   TextInput,
-  Image,
+  Platform,
+  NativeSyntheticEvent,
+  TextInputFocusEventData,
   Text,
+  Image,
   TouchableOpacity,
   TextInputProps,
   TextStyle,
   ViewStyle,
   ImageStyle,
 } from 'react-native';
+import Animated, { Clock, useCode, interpolate, Easing, Value, set }from 'react-native-reanimated';
+import debounce from 'lodash/debounce';
 import { styles } from './styles';
+import { CustomLabelProps, Props, SetGlobalStyles, setGlobalStyles} from './types';
+import { timing } from './animationUtils';
 
 import makeVisibleWhite from './assets/make_visible_white.png';
 import makeInvisibleWhite from './assets/make_invisible_white.png';
 import makeVisibleBlack from './assets/make_visible_black.png';
 import makeInvisibleBlack from './assets/make_invisible_black.png';
 
-export interface Props extends TextInputProps {
-  /** Style to the container of whole component */
-  containerStyles?: ViewStyle;
-  /** Changes the color for hide/show password image */
-  darkTheme?: true | false ;
-  /** Set this to true if you want the label to be always at a set position. Commonly used with hint for displaying both label and hint for your input. Default false. */
-  staticLabel?: boolean;
-  /** Hint displays only when staticLabel prop is set to true. This prop is used to show a preview of the input to the user */
-  hint?: string;
-  /** Set the color to the hint */
-  hintTextColor?: string;
-  /** Value for the label, same as placeholder */
-  label: string;
-  /** Style to the label */
-  labelStyles?: TextStyle;
-  /** Set this to true if is password to have a show/hide input and secureTextEntry automatically*/
-  isPassword?: true | false ;
-  /** Callback for action submit on the keyboard */
-  onSubmit?: Function;
-  /** Style to the show/hide password container */
-  showPasswordContainerStyles?: ViewStyle;
-  /** Style to the show/hide password image */
-  showPasswordImageStyles?: ImageStyle;
-  /** Style to the input */
-  inputStyles?: TextStyle;
-  /** Path to your custom image for show input */
-  customShowPasswordImage?: string;
-  /** Path to your custom image for hide input */
-  customHidePasswordImage?: string;
-  /** Custom Style for position, size and color for label, when it's focused or blurred*/
-  customLabelStyles?: CustomLabelProps;
-  /** Required if onFocus or onBlur is overrided */
-  isFocused?: boolean;
-  /** Set a mask to your input*/
-  mask?: string;
-  /** Set mask type*/
-  maskType?: 'currency' | 'phone' | 'date' | 'card';
-  /** Set currency thousand dividers*/
-  currencyDivider?: ',' | '.';
-  /** Maxinum number of decimal places allowed for currency mask. */
-  maxDecimalPlaces?: number;
-  /** Changes the input from single line input to multiline input*/
-  multiline?: true | false ;
-  /** Maxinum number of characters allowed. Overriden by mask if present */
-  maxLength?: number;
-  /** Shows the remaining number of characters allowed to be typed if maxLength or mask are present */
-  showCountdown?: true | false ;
-  /** Style to the countdown text */
-  showCountdownStyles?: TextStyle;
-  /** Label for the remaining number of characters allowed shown after the number */
-  countdownLabel?: string;
-  /** Set your custom show password component */
-  customShowPasswordComponent?: JSX.Element;
-  /** Set your custom hide password component */
-  customHidePasswordComponent?: JSX.Element;
-  /** Callback for show/hide password */
-  onTogglePassword?: (show:boolean)=>void;
-}
-
-export interface SetGlobalStyles {
-  /** Set global styles to all floating-label-inputs container*/
-  containerStyles?: ViewStyle,
-  /** Set global custom styles to all floating-label-inputs labels*/
-  customLabelStyles?: CustomLabelProps,
-  /** Set global styles to all floating-label-inputs input*/
-  inputStyles?: TextStyle,
-  /** Set global styles to all floating-label-inputs label*/
-  labelStyles?: TextStyle,
-  /** Set global styles to all floating-label-inputs show password container*/
-  showPasswordContainerStyles?: ViewStyle,
-  /** Set global styles to all floating-label-inputs show password image*/
-  showPasswordImageStyles?: ImageStyle,
-  /** Set global style to the countdown text */
-  showCountdownStyles?: TextStyle,
-}
-
-export interface CustomLabelProps {
-  leftFocused?: number;
-  leftBlurred?: number;
-  topFocused?: number;
-  topBlurred?: number;
-  fontSizeFocused?: number;
-  fontSizeBlurred?: number;
-  colorFocused?: string;
-  colorBlurred?: string;
-}
-
-  /** Set global styles for all your floating-label-inputs*/
-const setGlobalStyles: SetGlobalStyles = {
-  /**Set global styles to all floating-label-inputs container*/
-  containerStyles: undefined as ViewStyle | undefined,
-  /**Set global custom styles to all floating-label-inputs labels*/
-  customLabelStyles: undefined as CustomLabelProps | undefined,
-  /**Set global styles to all floating-label-inputs input*/
-  inputStyles: undefined as TextStyle | undefined,
-  /**Set global styles to all floating-label-inputs label*/
-  labelStyles: undefined as TextStyle | undefined,
-  /**Set global styles to all floating-label-inputs show password container*/
-  showPasswordContainerStyles: undefined as ViewStyle | undefined,
-  /**Set global styles to all floating-label-inputs show password image*/
-  showPasswordImageStyles: undefined as ImageStyle | undefined,
-  /**Set global style to the countdown text */
-  showCountdownStyles: undefined as TextStyle | undefined,
-};
-
 interface InputRef {
   focus(): void;
   blur(): void;
 }
 
+const onExecution = (event: NativeSyntheticEvent<TextInputFocusEventData>, 
+  innerFunc: (event: NativeSyntheticEvent<TextInputFocusEventData>) => void, 
+  outerFunc?: (event: NativeSyntheticEvent<TextInputFocusEventData>) => void) => {
+  innerFunc && innerFunc(event);
+  outerFunc && outerFunc(event);
+}
+
+const getAndroidExtraPadding = (textInputFontSize: number) => {
+  if (Platform.OS === "android") {
+    let defaultPadding = 6;
+    if (textInputFontSize < 14) {
+      defaultPadding = defaultPadding + (14 - textInputFontSize)
+    }
+    return defaultPadding;
+  }
+  return 0;
+}
+
+const getLabelPositions = (style: TextStyle, labelStyle: TextStyle) => {
+  const height = (style?.height as number || ((style?.paddingTop as number || 0)  + (style?.paddingBottom as number || 0))  || style?.padding as number) || 0;
+  const textInputFontSize = style?.fontSize || 13;
+  const labelFontSize = labelStyle?.fontSize || 13;
+  const fontSizeDiff = textInputFontSize - labelFontSize;
+  let unfocused, focused;
+
+
+  unfocused = height * 0.5 + fontSizeDiff * (Platform.OS === "android" ? 0.5 : 0.6 )+ getAndroidExtraPadding(textInputFontSize);
+  focused = -labelFontSize * 0.5;
+  return [unfocused, focused]
+}
+
 const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
-  {label,mask,isPassword,maxLength, inputStyles,showCountdown,
-    showCountdownStyles,labelStyles,darkTheme,countdownLabel,
-    currencyDivider,maskType,onChangeText,secureTextEntry,
-    customHidePasswordComponent, customShowPasswordComponent,
-    isFocused, onBlur, onFocus, onTogglePassword,
-  customHidePasswordImage,customLabelStyles={},staticLabel=false, hint, hintTextColor, placeholder, placeholderTextColor,onSubmit,containerStyles,customShowPasswordImage,showPasswordContainerStyles, maxDecimalPlaces, multiline, showPasswordImageStyles,value="",onSelectionChange, ...rest},
-  ref,
+  { label,
+    mask,
+    isPassword,
+    maxLength,
+    inputStyles,
+    showCountdown,
+    showCountdownStyles,
+    labelStyles,
+    darkTheme,
+    countdownLabel,
+    currencyDivider,
+    maskType,
+    onChangeText,
+    secureTextEntry,
+    customHidePasswordComponent,
+    customShowPasswordComponent,
+    isFocused,
+    onBlur,
+    onFocus,
+    onTogglePassword,
+    customHidePasswordImage,
+    customLabelStyles={},
+    staticLabel=false, 
+    hint, 
+    hintTextColor, 
+    placeholder, 
+    placeholderTextColor,
+    onSubmit,
+    containerStyles,
+    customShowPasswordImage,
+    showPasswordContainerStyles,
+    maxDecimalPlaces,
+    multiline,
+    showPasswordImageStyles,
+    value="",
+    onSelectionChange,
+    ...rest},
+    ref,
 ) => {
-  const [halfTop, setHalfTop] = useState(0)
-  const [isFocusedState, setIsFocused] = useState(false);
+  const [focusedLabel, _onFocusLabel] = useState(!!value);
+  const [focused, _onFocusTextInput] = useState(!!value);
   const [secureText, setSecureText] = useState(true);
+  const [halfTop, setHalfTop] = useState(0);
   const inputRef = useRef<any>(null);
+  const [animation, _] = useState(new Value(focusedLabel ? 1 : 0));
+  const clock = new Clock();
+  const debouncedOnFocusTextInput = debounce(_onFocusLabel, 500, { 'leading': true, 'trailing': false });
+
+  // const [halfTop, setHalfTop] = useState(0)
+  // const [isFocusedState, setIsFocused] = useState(false);
+  // const [secureText, setSecureText] = useState(true);
+  // const inputRef = useRef<any>(null);
 
   customLabelStyles = {
     fontSizeFocused: 10,
@@ -158,153 +129,74 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
     ...customLabelStyles,
   };
 
-  const [opacityAnimated] = useState(new Animated.Value(0))
-
-  const [leftAnimated] = useState(
-    new Animated.Value(
-      staticLabel ? (customLabelStyles?.leftFocused !== undefined ? customLabelStyles.leftFocused : 15):
-      customLabelStyles != undefined &&
-      customLabelStyles.leftBlurred !== undefined
-        ? customLabelStyles.leftBlurred
-        : 0,
-    ),
-  );
-  
-  const [topAnimated] = useState(
-    new Animated.Value(staticLabel ? ( customLabelStyles?.topFocused !== undefined ? customLabelStyles.topFocused: 0):
-      customLabelStyles.topBlurred ? customLabelStyles.topBlurred : 0,
-    ),
-  );
-
-  useEffect(() => {
-    if(!staticLabel){
-      if(isFocused === undefined){
-      if (value !== '' || isFocusedState) {
-        setIsFocused(true);
-      } else {
-        if (value === '' || value === null) {
-        setIsFocused(false);
-        }
-      }
-    }
-    }
-  }, [value]);
-
-  useEffect(() => {
-    if(!staticLabel){
-      if (isFocused !== undefined) {
-        if (value !== '' || isFocused) {
-          setIsFocused(true);
-        }else{
-          setIsFocused(false);
-        }
-      }
-    }
-  }, [isFocused,value]);
-
-  useEffect(()=>{
-    if(isFocusedState){
-      animateFocus();
-    }else{
-      animateBlur();
-    }
-  },[isFocusedState])
-
-
-  useImperativeHandle(ref, () => ({
-    focus() {
-      inputRef.current.focus();
-    },
-    blur() {
-      inputRef.current.blur();
-    },
-  }));
-
-  useEffect(()=>{    
-    if((customLabelStyles.topFocused === undefined && isFocusedState)){
-      Animated.timing(topAnimated, {
-        toValue: customLabelStyles.topFocused
-          ? customLabelStyles.topFocused
-          : (-halfTop)/2,
-        duration: 300,
+  useCode(
+    () => set(
+      animation,
+      timing({
+        clock,
+        animation,
+        duration: new Animated.Value(150),
+        from: focusedLabel ? 0 : 1,
+        to: focusedLabel ? 1 : 0,
         easing: Easing.linear,
-        useNativeDriver: true,
-      }).start()
-    }else{
-      if(staticLabel){
-        Animated.parallel([
-          Animated.timing(opacityAnimated, {
-            toValue: 1,
-            duration: 500,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          }),
-        Animated.timing(topAnimated, {
-          toValue: customLabelStyles.topFocused
-            ? customLabelStyles.topFocused
-            : (-halfTop) ,
-          duration: 500,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),]).start()
+      })
+    ),
+    [focusedLabel]
+  )
+
+  useEffect(
+    () => {
+      if (!focusedLabel && value) {
+        debouncedOnFocusTextInput(true)
       }
-    }
-  },[halfTop])
+      if (focusedLabel && !value) {
+        debouncedOnFocusTextInput(false)
+      }
+    },
+    [value]
+  )
 
-  function animateFocus(){
-    if(!staticLabel){
-      Animated.parallel([
-        Animated.timing(leftAnimated, {
-          useNativeDriver: true,
-          duration: 300,
-          easing: Easing.linear,
-          toValue: customLabelStyles.leftFocused
-            ? customLabelStyles.leftFocused
-            : 0,
-        }),
-        Animated.timing(topAnimated, {
-          toValue: customLabelStyles.topFocused
-            ? customLabelStyles.topFocused
-            : (-halfTop)/2,
-          duration: 300,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
+  let input: TextStyle = inputStyles !== undefined ? inputStyles : setGlobalStyles?.inputStyles !== undefined ? setGlobalStyles.inputStyles : styles.input
+
+  const floatingLabelStyle: TextStyle = {
+    ...setGlobalStyles?.labelStyles,
+    ...labelStyles,
+    left: labelStyles?.left !== undefined ? labelStyles?.left : 10,
+    fontSize: staticLabel? (customLabelStyles?.fontSizeFocused !== undefined ? customLabelStyles.fontSizeFocused : 10) : !focused
+      ? customLabelStyles.fontSizeBlurred
+      : customLabelStyles.fontSizeFocused,
+    color: !focused
+      ? customLabelStyles.colorBlurred
+      : customLabelStyles.colorFocused,
+    alignSelf: 'center',
+    position: 'absolute',
+    flex:1,
+    zIndex: 999,
+  };
+
+  const focusStyle = {
+    top: interpolate(animation, {
+      inputRange: [0, 1],
+      outputRange: [...getLabelPositions(input, (floatingLabelStyle))]
+    }),
+    fontSize: interpolate(animation, {
+      inputRange: [0, 1],
+      outputRange: [16, 13]
+    }),
+    // backgroundColor: (
+    //   focusedLabel
+    //     ? theme.PRIMARY_BACKGROUND_COLOR
+    //     : 'transparent'
+    // ),
+  };
+
+
+  function handleFocus(event:  NativeSyntheticEvent<TextInputFocusEventData>) {
+    onExecution(event, () => { _onFocusLabel(true); _onFocusTextInput(true) }, () => onFocus?.(event));
   }
 
-  function animateBlur(){
-    if(!staticLabel){
-      Animated.parallel([
-        Animated.timing(leftAnimated, {
-          useNativeDriver: true,
-          duration: 300,
-          easing: Easing.linear,
-          toValue: customLabelStyles.leftBlurred
-            ? customLabelStyles.leftBlurred
-            : 0,
-        }),
-        Animated.timing(topAnimated, {
-          toValue: customLabelStyles.topBlurred
-            ? customLabelStyles.topBlurred
-            : 0,
-          duration: 300,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }
-
-  function handleFocus() {
-      setIsFocused(true);
-  }
-
-  function handleBlur() {
-    if (value === '') {
-      setIsFocused(false);
-    }
+  function handleBlur(event:  NativeSyntheticEvent<TextInputFocusEventData>) {
+    onExecution(event, () => { _onFocusLabel(!!value); _onFocusTextInput(false) }, () => onBlur?.(event));
   }
 
   function setFocus() {
@@ -334,29 +226,13 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
     ? customShowPasswordImage ? customShowPasswordImage : makeInvisibleWhite
     : customHidePasswordImage ? customHidePasswordImage : makeVisibleWhite;
 
-  const style: TextStyle = {
-    ...setGlobalStyles?.labelStyles,
-    ...labelStyles,
-    left: labelStyles?.left !== undefined ? labelStyles?.left : 10,
-    fontSize: staticLabel? (customLabelStyles?.fontSizeFocused !== undefined ? customLabelStyles.fontSizeFocused : 10) : !isFocusedState
-      ? customLabelStyles.fontSizeBlurred
-      : customLabelStyles.fontSizeFocused,
-    color: !isFocusedState
-      ? customLabelStyles.colorBlurred
-      : customLabelStyles.colorFocused,
-    alignSelf: 'center',
-    position: 'absolute',
-    flex:1,
-    zIndex: 999,
-  };
-
-  let input: TextStyle = inputStyles !== undefined ? inputStyles : setGlobalStyles?.inputStyles !== undefined ? setGlobalStyles.inputStyles : styles.input
+  
   
   input = {
     flex:1,
     ...input,
     color: input.color !== undefined ? input.color : customLabelStyles.colorFocused,
-    zIndex: style?.zIndex !== undefined ? style.zIndex - 2 : 0,
+    zIndex: floatingLabelStyle?.zIndex !== undefined ? floatingLabelStyle.zIndex - 2 : 0,
   };
 
   containerStyles = containerStyles !== undefined ? containerStyles : setGlobalStyles?.containerStyles !== undefined ? setGlobalStyles?.containerStyles : styles.container;
@@ -364,7 +240,7 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
   containerStyles = {
     ...containerStyles,
     flexDirection: 'row',
-    zIndex: style?.zIndex !== undefined ? style.zIndex - 6: 0
+    zIndex: floatingLabelStyle?.zIndex !== undefined ? floatingLabelStyle.zIndex - 6: 0
   }
 
   let toggleButton = showPasswordContainerStyles !== undefined ? showPasswordContainerStyles : setGlobalStyles?.showPasswordContainerStyles !== undefined ? setGlobalStyles.showPasswordContainerStyles : styles.toggleButton;
@@ -388,26 +264,132 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
     ...showCountdownStyles,
   };
 
+  function onChangeTextHandler(val: string){
+    if (maskType !== undefined || mask !== undefined) {
+      if (maskType !== 'currency' && mask !== undefined) {          
+        let unmasked = val.replace(/[^0-9A-Za-z]/g,'');
+      
+      // pegar as posições dos caracteres especiais.
+        let positions = [];
+        for(let i =0;i<mask.length;i++){
+          if(mask[i].match(/[^0-9A-Za-z]/)){
+            positions.push(i);
+          }
+        }
+
+        let newValue = ""
+        let offset = 0;
+        for(let j=0;j<unmasked.length;j++){
+          // adicionar caracteres especiais 
+          while(mask[j+offset]?.match(/[^0-9A-Za-z]/)){
+            newValue += mask[j+offset]
+            offset++;
+          }
+          newValue += unmasked[j]
+        }
+
+        return onChangeText ? onChangeText(newValue) : false;
+
+      } else if (maskType === 'currency') {
+        let divider = '';
+        let decimal = '';
+        if (currencyDivider === ',') {
+          divider = ',';
+          decimal = '.';
+        } else {
+          divider = '.';
+          decimal = ',';
+        }
+        if (
+          value !== undefined &&
+          value.length < val.length
+        ) {
+          if (val.includes(decimal)) {
+            let intVal = val.split(decimal)[0].replace(/[,.]/g, '');
+            let decimalValue = val.split(decimal)[1];
+            if (intVal.length > 3) {
+              let arr: string[] = [];
+              for (let i = 0; i < intVal.length; i += 3) {
+                arr.push(
+                  intVal
+                    .split('')
+                    .splice(intVal.length - i, 3)
+                    .join(''),
+                );
+              }
+
+              arr = arr.reverse();
+              arr.pop();
+              let initial = arr.join('');
+              if (intVal.includes(initial)) {
+                intVal = intVal.replace(initial, '');
+              }
+              intVal = intVal + divider + arr.join(divider);
+            }
+
+            val = intVal + decimal + decimalValue;
+
+            let decimalPlaces: number =
+              maxDecimalPlaces !== undefined
+                ? maxDecimalPlaces
+                : 2;
+
+            if (
+              val.split(decimal)[1] !== undefined &&
+              value.split(decimal)[1] !== undefined &&
+              val.split(decimal)[1].length >
+                value.split(decimal)[1].length &&
+              value.split(decimal)[1].length === decimalPlaces
+            ) {
+              return;
+            } else {
+              if (val.split(decimal)[1].length > decimalPlaces) {
+                val = val.slice(0, val.length - 1);
+              }
+            }
+          } else {
+            if (val.length > 3) {
+              let arr: string[] = [];
+              let unmasked = val.replace(/[,.]/g, '');
+              for (let i = 0; i < unmasked.length; i += 3) {
+                arr.push(
+                  unmasked
+                    .split('')
+                    .splice(unmasked.length - i, 3)
+                    .join(''),
+                );
+              }
+
+              arr = arr.reverse();
+              arr.pop();
+              let initial = arr.join('');
+              if (unmasked.includes(initial)) {
+                unmasked = unmasked.replace(initial, '');
+              }
+              val = unmasked + divider + arr.join(divider);
+            }
+          }
+        }
+        return onChangeText ? onChangeText(val) : false;
+      } else {
+        return onChangeText ? onChangeText(val) : false;
+      }
+    } else {
+      return onChangeText ? onChangeText(val) : false;
+    }
+  }
+
   return (
     <View style={containerStyles} 
     onLayout={(event) => {
       var {height} = event.nativeEvent.layout
-      setHalfTop((height + (!staticLabel ? style?.fontSize !== undefined ? style.fontSize : 0 : 0))/2)
+      setHalfTop((height + (!staticLabel ? floatingLabelStyle?.fontSize !== undefined ? floatingLabelStyle.fontSize : 0 : 0))/2)
     }}>
       <Animated.Text
         onPress={setFocus}
         style={[
-          style,
-          {
-            opacity: staticLabel ? opacityAnimated.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, 1]
-            }) : labelStyles?.opacity ? labelStyles.opacity : setGlobalStyles?.labelStyles?.opacity ? setGlobalStyles.labelStyles.opacity : 1,        
-            transform: [
-              { translateX: leftAnimated },
-              { translateY: topAnimated },
-            ],
-          },
+          floatingLabelStyle,
+          focusStyle,
         ]}
       >
         {label}
@@ -447,120 +429,7 @@ const FloatingLabelInput: React.ForwardRefRenderFunction<InputRef, Props> = (
         placeholderTextColor={hintTextColor}
         placeholder={staticLabel && hint ? hint : ''}
         multiline={multiline}
-        onChangeText={(val: string) => {
-          if (maskType !== undefined || mask !== undefined) {
-            if (maskType !== 'currency' && mask !== undefined) {          
-              let unmasked = val.replace(/[^0-9A-Za-z]/g,'');
-            
-            // pegar as posições dos caracteres especiais.
-              let positions = [];
-              for(let i =0;i<mask.length;i++){
-                if(mask[i].match(/[^0-9A-Za-z]/)){
-                  positions.push(i);
-                }
-              }
-
-              let newValue = ""
-              let offset = 0;
-              for(let j=0;j<unmasked.length;j++){
-                // adicionar caracteres especiais 
-                while(mask[j+offset]?.match(/[^0-9A-Za-z]/)){
-                  newValue += mask[j+offset]
-                  offset++;
-                }
-                newValue += unmasked[j]
-              }
-
-              return onChangeText ? onChangeText(newValue) : false;
-
-            } else if (maskType === 'currency') {
-              let divider = '';
-              let decimal = '';
-              if (currencyDivider === ',') {
-                divider = ',';
-                decimal = '.';
-              } else {
-                divider = '.';
-                decimal = ',';
-              }
-              if (
-                value !== undefined &&
-                value.length < val.length
-              ) {
-                if (val.includes(decimal)) {
-                  let intVal = val.split(decimal)[0].replace(/[,.]/g, '');
-                  let decimalValue = val.split(decimal)[1];
-                  if (intVal.length > 3) {
-                    let arr: string[] = [];
-                    for (let i = 0; i < intVal.length; i += 3) {
-                      arr.push(
-                        intVal
-                          .split('')
-                          .splice(intVal.length - i, 3)
-                          .join(''),
-                      );
-                    }
-
-                    arr = arr.reverse();
-                    arr.pop();
-                    let initial = arr.join('');
-                    if (intVal.includes(initial)) {
-                      intVal = intVal.replace(initial, '');
-                    }
-                    intVal = intVal + divider + arr.join(divider);
-                  }
-
-                  val = intVal + decimal + decimalValue;
-
-                  let decimalPlaces: number =
-                    maxDecimalPlaces !== undefined
-                      ? maxDecimalPlaces
-                      : 2;
-
-                  if (
-                    val.split(decimal)[1] !== undefined &&
-                    value.split(decimal)[1] !== undefined &&
-                    val.split(decimal)[1].length >
-                      value.split(decimal)[1].length &&
-                    value.split(decimal)[1].length === decimalPlaces
-                  ) {
-                    return;
-                  } else {
-                    if (val.split(decimal)[1].length > decimalPlaces) {
-                      val = val.slice(0, val.length - 1);
-                    }
-                  }
-                } else {
-                  if (val.length > 3) {
-                    let arr: string[] = [];
-                    let unmasked = val.replace(/[,.]/g, '');
-                    for (let i = 0; i < unmasked.length; i += 3) {
-                      arr.push(
-                        unmasked
-                          .split('')
-                          .splice(unmasked.length - i, 3)
-                          .join(''),
-                      );
-                    }
-
-                    arr = arr.reverse();
-                    arr.pop();
-                    let initial = arr.join('');
-                    if (unmasked.includes(initial)) {
-                      unmasked = unmasked.replace(initial, '');
-                    }
-                    val = unmasked + divider + arr.join(divider);
-                  }
-                }
-              }
-              return onChangeText ? onChangeText(val) : false;
-            } else {
-              return onChangeText ? onChangeText(val) : false;
-            }
-          } else {
-            return onChangeText ? onChangeText(val) : false;
-          }
-        }}
+        onChangeText={onChangeTextHandler}
         style={input}
       />
       {isPassword && (
